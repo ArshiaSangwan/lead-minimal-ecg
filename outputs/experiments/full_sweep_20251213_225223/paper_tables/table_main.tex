@@ -1,0 +1,26 @@
+\begin{table}[htbp]
+\centering
+\caption{Classification Performance by Lead Configuration on PTB-XL Test Set. 
+AUROC: Area Under the ROC Curve (macro-averaged across 5 classes). 
+LRS: Lead-Robustness Score (higher is better). 
+Brier: Brier Score (lower indicates better calibration). 
+Best results per metric in \textbf{bold}.}
+\label{tab:main_results}
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Configuration} & \textbf{N} & \textbf{AUROC} & \textbf{Ret.(\%)} & \textbf{F1} & \textbf{Brier} & \textbf{LRS} \\
+\midrule
+12 & 12 & \textbf{0.913} & 100.0 & \textbf{0.688} & \textbf{0.0836} & \textbf{1.000} \\
+6: limb & 6 & 0.889 & 97.4 & 0.641 & 0.0949 & 0.968 \\
+3: I-II-V2 & 3 & 0.905 & 99.1 & 0.667 & 0.0881 & 0.988 \\
+3: I-II-III & 3 & 0.888 & 97.3 & 0.634 & 0.0960 & 0.966 \\
+3: II-V2-V5 & 3 & 0.897 & 98.3 & 0.659 & 0.0905 & 0.980 \\
+2: I-II & 2 & 0.887 & 97.2 & 0.630 & 0.0968 & 0.965 \\
+2: II-V2 & 2 & 0.884 & 96.8 & 0.619 & 0.0973 & 0.961 \\
+1: II & 1 & 0.856 & 93.7 & 0.566 & 0.1091 & 0.926 \\
+1: V2 & 1 & 0.793 & 86.8 & 0.444 & 0.1282 & 0.854 \\
+1: I & 1 & 0.842 & 92.3 & 0.537 & 0.1157 & 0.907 \\
+1: V5 & 1 & 0.851 & 93.2 & 0.568 & 0.1094 & 0.921 \\
+\bottomrule
+\end{tabular}
+\end{table}

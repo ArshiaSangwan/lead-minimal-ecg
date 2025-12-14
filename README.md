@@ -1,86 +1,129 @@
-# Lead-Minimal ECG Diagnosis
+# Lead-Minimal ECG: How Few Leads Do You Really Need?
 
-**"Which leads actually matter?"** — Systematic evaluation of diagnostic performance when reducing 12-lead ECGs to realistic 1-3 lead subsets.
+> **"A 3-lead ECG configuration (I, II, V2) retains 99.1% of 12-lead diagnostic performance."**
 
-## Key Contribution
+This repository contains the code, experiments, and results for our systematic study on ECG lead reduction for automated cardiac diagnosis.
 
-1. **Systematic Lead Ablation Study** — Evaluate all clinically-plausible lead subsets on PTB-XL
-2. **Lead-Robustness Score (LRS)** — Novel metric combining sensitivity drop and calibration shift
-3. **Lead-Robust Model** — Compact model that maintains accuracy with fewer leads
+---
 
-## Why This Matters
+## 🎯 Key Findings
 
-Wearable ECGs (Apple Watch, Kardia, Fitbit) use 1-3 leads. Hospitals and device companies need algorithms that maintain accuracy with fewer leads. This work directly answers: **"What's the minimum number of leads needed for reliable diagnosis?"**
+| Configuration | Leads | AUROC | Performance Retention |
+|--------------|-------|-------|----------------------|
+| **12-lead** (baseline) | All 12 | **0.913** | 100.0% |
+| **3-lead (I, II, V2)** 🏆 | I, II, V2 | **0.905** | **99.1%** |
+| 3-lead (II, V2, V5) | II, V2, V5 | 0.897 | 98.3% |
+| 6-lead (limb) | Limb leads | 0.889 | 97.4% |
+| 2-lead (I, II) | I, II | 0.887 | 97.2% |
+| **1-lead (II)** | II | 0.856 | **93.7%** |
 
-## Dataset
+### Key Insights
 
-- **PTB-XL** (21,837 12-lead ECGs, 10-second recordings)
-- 5 diagnostic superclasses: NORM, MI, STTC, CD, HYP
-- Uses official stratified 10-fold split
+1. **3-lead outperforms 6-lead**: The optimal 3-lead (I, II, V2) achieves higher AUROC than all 6 limb leads.
+2. **V2 is critical**: Adding V2 dramatically improves MI detection (0.922 vs 0.876).
+3. **Lead II alone is robust**: Single lead achieves 93.7% of full 12-lead performance.
 
-## Quick Start
+---
 
-```bash
-# 1. Setup environment
-conda create -n ecg python=3.11 -y
-conda activate ecg
-pip install -r requirements.txt
+## 📊 Full Results
 
-# 2. Download PTB-XL dataset
-python scripts/download_data.py
+### Main Results
 
-# 3. Preprocess and generate lead subsets
-python src/preprocess.py
+| Config | N | AUROC | F1 | Brier | LRS |
+|--------|---|-------|-----|-------|-----|
+| 12-lead | 12 | **0.913** | **0.688** | **0.084** | **1.000** |
+| 6-lead-limb | 6 | 0.889 | 0.641 | 0.095 | 0.968 |
+| 3-lead-I-II-V2 | 3 | 0.905 | 0.667 | 0.088 | 0.988 |
+| 3-lead-I-II-III | 3 | 0.888 | 0.634 | 0.096 | 0.966 |
+| 3-lead-II-V2-V5 | 3 | 0.897 | 0.659 | 0.091 | 0.980 |
+| 2-lead-I-II | 2 | 0.887 | 0.630 | 0.097 | 0.965 |
+| 2-lead-II-V2 | 2 | 0.884 | 0.619 | 0.097 | 0.961 |
+| 1-lead-II | 1 | 0.856 | 0.566 | 0.109 | 0.926 |
+| 1-lead-V5 | 1 | 0.851 | 0.568 | 0.109 | 0.921 |
+| 1-lead-I | 1 | 0.842 | 0.537 | 0.116 | 0.907 |
+| 1-lead-V2 | 1 | 0.793 | 0.444 | 0.128 | 0.854 |
 
-# 4. Train baseline (12-lead)
-python src/train.py --leads all --epochs 30
+### Per-Class AUROC
 
-# 5. Train lead-subset models
-python src/train.py --leads II --epochs 30
-python src/train.py --leads I,II --epochs 30
-python src/train.py --leads I,II,V2 --epochs 30
+| Config | NORM | MI | STTC | CD | HYP |
+|--------|------|-----|------|-----|-----|
+| 12-lead | 0.953 | 0.929 | 0.936 | 0.917 | 0.830 |
+| 3-lead-I-II-V2 | 0.947 | 0.922 | 0.924 | 0.910 | 0.821 |
+| 6-lead-limb | 0.940 | 0.886 | 0.917 | 0.885 | 0.818 |
+| 1-lead-II | 0.917 | 0.842 | 0.876 | 0.860 | 0.784 |
 
-# 6. Evaluate and compute LRS
-python src/evaluate.py --model_dir outputs/
+---
 
-# 7. Generate figures
-python src/visualize.py
+## 🏗️ Method
+
+### Model: 1D ResNet
+- **Stem**: Conv1d → BN → ReLU → MaxPool
+- **Blocks**: 4 residual blocks with spatial dropout (0.3) and stochastic depth (0.1)
+- **Head**: AdaptiveAvgPool → Dropout → Linear
+- **Parameters**: ~100K
+
+### Training
+- **Optimizer**: AdamW (lr=0.001, wd=0.01)
+- **Epochs**: 30 with early stopping
+- **Regularization**: Label smoothing (0.1), Mixup (α=0.2)
+- **Hardware**: RTX 4090, mixed precision
+
+### Lead-Robustness Score (LRS)
+```
+LRS = 0.7 × (AUROC_subset / AUROC_baseline) + 0.3 × (1 - ΔBrier / 0.25)
 ```
 
-## Project Structure
+---
+
+## 🚀 Quick Start
+
+```bash
+# Setup
+conda create -n ecg python=3.11 -y && conda activate ecg
+pip install -r requirements.txt
+
+# Download and preprocess PTB-XL
+python scripts/download_data.py
+python src/preprocess.py
+
+# Run all experiments
+python run_all_experiments.py --epochs 30
+
+# Generate paper tables
+python generate_paper_results.py
+```
+
+---
+
+## 📁 Project Structure
 
 ```
 lead-minimal-ecg/
-├── README.md
-├── requirements.txt
-├── scripts/
-│   └── download_data.py
 ├── src/
-│   ├── preprocess.py
-│   ├── dataset.py
-│   ├── model.py
-│   ├── train.py
-│   ├── evaluate.py
-│   ├── metrics.py
-│   └── visualize.py
-├── configs/
-│   └── config.yaml
-├── notebooks/
-│   └── demo.ipynb
+│   ├── train.py          # Training with W&B logging
+│   ├── model.py          # 1D ResNet architecture
+│   └── dataset.py        # PTB-XL data loader
+├── run_all_experiments.py # Full experiment suite
+├── generate_paper_results.py
 ├── outputs/
-│   ├── models/
-│   └── figures/
+│   ├── models/           # Checkpoints
+│   └── experiments/      # Results & tables
 └── paper/
-    └── main.tex
+    └── main.tex          # LaTeX paper
 ```
 
-## Lead Subsets Evaluated
+---
 
-| Subset | Leads | Clinical Rationale |
-|--------|-------|-------------------|
-| Single-Lead | II | Standard monitoring lead |
-| Single-Lead | V2 | Best for RBBB/LBBB |
-| 2-Lead | I, II | Limb leads only |
-| 3-Lead | I, II, V2 | Minimal + precordial |
-| 6-Lead | Limb leads | Standard limb |
-| 12-Lead | All | Full standard ECG |
+## 📖 Citation
+
+```bibtex
+@article{leadminimal2024,
+  title={Lead-Minimal ECG: Systematic Evaluation of Reduced-Lead Configurations},
+  author={Your Name},
+  year={2024}
+}
+```
+
+## License
+
+MIT License

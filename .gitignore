@@ -244,3 +244,6 @@ __marimo__/
 
 paper/
 data/
+experiment_log.txt
+EXPERIMENT_RESULTS.md
+generate_paper_results.py
