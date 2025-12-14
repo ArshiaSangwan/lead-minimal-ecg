@@ -46,6 +46,14 @@ training:
   scheduler: "cosine"
   early_stopping_patience: 7
 
+# Experiment Tracking (W&B)
+wandb:
+  project: "lead-minimal-ecg"
+  entity: null  # Your W&B username or team
+  enabled: true
+  log_gradients: true
+  log_freq: 100
+
 # Evaluation
 evaluation:
   metrics: ["auroc", "auprc", "f1_macro", "sensitivity", "specificity"]

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 1D ResNet for multi-label ECG classification.
+Includes regularization techniques to prevent overfitting.
 """
 
 import torch
@@ -8,10 +9,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class ResBlock(nn.Module):
-    """Basic residual block with 1D convolutions."""
+class SpatialDropout1d(nn.Module):
+    """Drops entire channels (better for time series than regular dropout)."""
+    def __init__(self, p=0.2):
+        super().__init__()
+        self.p = p
     
-    def __init__(self, in_ch, out_ch, kernel_size=15, stride=1, dropout=0.2):
+    def forward(self, x):
+        if not self.training or self.p == 0:
+            return x
+        # x shape: (batch, channels, seq_len)
+        mask = torch.rand(x.size(0), x.size(1), 1, device=x.device) > self.p
+        return x * mask.float() / (1 - self.p)
+
+
+class ResBlock(nn.Module):
+    """Residual block with spatial dropout and optional stochastic depth."""
+    
+    def __init__(self, in_ch, out_ch, kernel_size=15, stride=1, dropout=0.2, drop_path=0.0):
         super().__init__()
         pad = kernel_size // 2
         
@@ -19,9 +34,10 @@ class ResBlock(nn.Module):
         self.bn1 = nn.BatchNorm1d(out_ch)
         self.conv2 = nn.Conv1d(out_ch, out_ch, kernel_size, 1, pad, bias=False)
         self.bn2 = nn.BatchNorm1d(out_ch)
-        self.drop = nn.Dropout(dropout)
+        self.drop = SpatialDropout1d(dropout)  # Spatial dropout instead of regular
+        self.drop_path = drop_path  # Stochastic depth probability
         
-        # Skip connection (1x1 conv if dimensions change)
+        # Skip connection
         self.skip = nn.Identity()
         if stride != 1 or in_ch != out_ch:
             self.skip = nn.Sequential(
@@ -30,44 +46,54 @@ class ResBlock(nn.Module):
             )
     
     def forward(self, x):
+        identity = self.skip(x)
+        
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.drop(out)
         out = self.bn2(self.conv2(out))
-        return F.relu(out + self.skip(x))
+        
+        # Stochastic depth: randomly drop the residual branch during training
+        if self.training and self.drop_path > 0:
+            if torch.rand(1).item() < self.drop_path:
+                return F.relu(identity)
+        
+        return F.relu(out + identity)
 
 
 class ResNet1D(nn.Module):
     """
-    1D ResNet for ECG classification.
+    1D ResNet for ECG classification with proper regularization.
     
     Input:  (batch, n_leads, seq_len)
     Output: (batch, n_classes) logits
     """
     
-    def __init__(self, n_leads=12, n_classes=5, base_filters=64,
-                 kernel_size=15, num_blocks=4, dropout=0.2):
+    def __init__(self, n_leads=12, n_classes=5, base_filters=32,
+                 kernel_size=15, num_blocks=3, dropout=0.3, drop_path=0.1):
         super().__init__()
         
-        # Initial projection
+        # Smaller initial projection
         self.stem = nn.Sequential(
-            nn.Conv1d(n_leads, base_filters, 15, 1, 7, bias=False),
+            nn.Conv1d(n_leads, base_filters, 15, 2, 7, bias=False),  # stride=2 for downsampling
             nn.BatchNorm1d(base_filters),
             nn.ReLU(),
             nn.MaxPool1d(2)
         )
         
-        # Stack of residual blocks with increasing channels
+        # Fewer blocks with stochastic depth
         self.blocks = nn.ModuleList()
         in_ch = base_filters
         for i in range(num_blocks):
-            out_ch = base_filters * (2 ** i)
+            out_ch = base_filters * (2 ** min(i, 2))  # Cap channel growth at 4x
             stride = 2 if i > 0 else 1
-            self.blocks.append(ResBlock(in_ch, out_ch, kernel_size, stride, dropout))
+            # Linearly increase drop_path probability
+            block_drop_path = drop_path * (i / max(num_blocks - 1, 1))
+            self.blocks.append(ResBlock(in_ch, out_ch, kernel_size, stride, dropout, block_drop_path))
             in_ch = out_ch
         
         self.pool = nn.AdaptiveAvgPool1d(1)
         
-        final_ch = base_filters * (2 ** (num_blocks - 1))
+        final_ch = base_filters * (2 ** min(num_blocks - 1, 2))
         self.head = nn.Sequential(
             nn.Dropout(dropout),
             nn.Linear(final_ch, n_classes)

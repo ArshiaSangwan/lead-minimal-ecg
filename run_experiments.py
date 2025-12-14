@@ -65,6 +65,8 @@ def main():
     parser.add_argument("--epochs", type=int, default=30, help="Number of epochs")
     parser.add_argument("--skip_download", action="store_true", help="Skip data download")
     parser.add_argument("--skip_preprocess", action="store_true", help="Skip preprocessing")
+    parser.add_argument("--no_wandb", action="store_true", help="Disable W&B logging")
+    parser.add_argument("--wandb_project", type=str, default="lead-minimal-ecg")
     parser.add_argument("--configs", nargs="+", default=None, 
                         help="Specific configs to run (e.g., 'all II I_II')")
     
@@ -114,8 +116,9 @@ def main():
         
         leads = LEAD_CONFIGS[config_name]
         
+        wandb_flag = "--no_wandb" if args.no_wandb else f"--wandb_project {args.wandb_project}"
         run_command(
-            f"python src/train.py --leads {leads} --epochs {epochs} --batch_size 128",
+            f"python src/train.py --leads {leads} --epochs {epochs} --batch_size 128 {wandb_flag}",
             f"Training: {config_name} ({leads})"
         )
     

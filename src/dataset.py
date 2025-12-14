@@ -67,13 +67,31 @@ class PTBXLDataset(Dataset):
         return sig, lab
     
     def _augment(self, sig):
-        """Simple augmentations: scaling, noise, temporal shift."""
+        """Enhanced augmentations to reduce overfitting."""
+        # Amplitude scaling (more aggressive)
+        if np.random.rand() < 0.7:
+            sig = sig * np.random.uniform(0.7, 1.3)
+        
+        # Gaussian noise (increased probability and magnitude)
         if np.random.rand() < 0.5:
-            sig = sig * np.random.uniform(0.8, 1.2)
+            sig = sig + np.random.normal(0, 0.1, sig.shape)
+        
+        # Temporal shift
+        if np.random.rand() < 0.5:
+            sig = np.roll(sig, np.random.randint(-100, 100), axis=0)
+        
+        # Random baseline wander
         if np.random.rand() < 0.3:
-            sig = sig + np.random.normal(0, 0.05, sig.shape)
-        if np.random.rand() < 0.3:
-            sig = np.roll(sig, np.random.randint(-50, 50), axis=0)
+            t = np.linspace(0, 1, sig.shape[0])
+            wander = 0.1 * np.sin(2 * np.pi * np.random.uniform(0.1, 0.5) * t)
+            sig = sig + wander[:, np.newaxis]
+        
+        # Random dropout of time segments
+        if np.random.rand() < 0.2:
+            start = np.random.randint(0, sig.shape[0] - 50)
+            length = np.random.randint(10, 50)
+            sig[start:start+length, :] = 0
+        
         return sig.astype(np.float32)
 
 

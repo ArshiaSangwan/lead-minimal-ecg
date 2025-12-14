@@ -2,6 +2,7 @@
 """
 Training script for Lead-Minimal ECG experiments.
 Optimized for RTX 4090 with mixed precision training.
+Includes W&B logging for experiment tracking.
 """
 
 import os
@@ -16,12 +17,51 @@ import torch
 import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from sklearn.metrics import roc_auc_score, f1_score
 from tqdm import tqdm
 
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
+    print("Warning: wandb not installed. Run 'pip install wandb' for experiment tracking.")
+
 from dataset import get_dataloaders, LEAD_NAMES
 from model import get_model, count_parameters
+
+
+CLASSES = ['NORM', 'MI', 'STTC', 'CD', 'HYP']
+
+
+class LabelSmoothingBCELoss(nn.Module):
+    """BCEWithLogitsLoss with label smoothing to reduce overfitting."""
+    def __init__(self, smoothing=0.1):
+        super().__init__()
+        self.smoothing = smoothing
+        self.bce = nn.BCEWithLogitsLoss()
+    
+    def forward(self, pred, target):
+        # Smooth labels: 0 -> smoothing/2, 1 -> 1 - smoothing/2
+        target_smooth = target * (1 - self.smoothing) + self.smoothing / 2
+        return self.bce(pred, target_smooth)
+
+
+def mixup_data(x, y, alpha=0.4):
+    """Mixup augmentation for ECG signals - proven effective for physiological data."""
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1.0
+    
+    batch_size = x.size(0)
+    index = torch.randperm(batch_size, device=x.device)
+    
+    mixed_x = lam * x + (1 - lam) * x[index]
+    mixed_y = lam * y + (1 - lam) * y[index]
+    
+    return mixed_x, mixed_y
 
 
 def set_seed(seed: int = 42):
@@ -47,9 +87,11 @@ def train_epoch(
     optimizer: torch.optim.Optimizer,
     scaler: GradScaler,
     device: torch.device,
-    use_amp: bool = True
+    use_amp: bool = True,
+    use_mixup: bool = True,
+    mixup_alpha: float = 0.4
 ) -> dict:
-    """Train for one epoch."""
+    """Train for one epoch with optional Mixup augmentation."""
     
     model.train()
     total_loss = 0
@@ -62,11 +104,17 @@ def train_epoch(
         signals = signals.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
         
+        # Apply Mixup augmentation
+        if use_mixup:
+            signals, labels_mixed = mixup_data(signals, labels, mixup_alpha)
+        else:
+            labels_mixed = labels
+        
         optimizer.zero_grad()
         
-        with autocast(enabled=use_amp):
+        with autocast('cuda', enabled=use_amp):
             outputs = model(signals)
-            loss = criterion(outputs, labels)
+            loss = criterion(outputs, labels_mixed)
         
         scaler.scale(loss).backward()
         scaler.step(optimizer)
@@ -74,11 +122,12 @@ def train_epoch(
         
         total_loss += loss.item() * signals.size(0)
         
-        # Store predictions
+        # Store predictions (use original labels for metrics)
         with torch.no_grad():
             probs = torch.sigmoid(outputs)
             all_preds.append(probs.cpu().numpy())
-            all_labels.append(labels.cpu().numpy())
+            # Use rounded labels for AUROC calculation when mixup is used
+            all_labels.append((labels_mixed > 0.5).float().cpu().numpy())
         
         pbar.set_postfix({'loss': loss.item()})
     
@@ -127,7 +176,7 @@ def evaluate(
         signals = signals.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
         
-        with autocast(enabled=use_amp):
+        with autocast('cuda', enabled=use_amp):
             outputs = model(signals)
             loss = criterion(outputs, labels)
         
@@ -176,9 +225,13 @@ def train(
     patience: int = 7,
     output_dir: str = "outputs/",
     data_path: str = "data/processed/ptbxl_processed.h5",
-    seed: int = 42
+    seed: int = 42,
+    use_wandb: bool = True,
+    wandb_project: str = "lead-minimal-ecg",
+    wandb_entity: str = None,
+    wandb_tags: list = None
 ):
-    """Main training function."""
+    """Main training function with W&B logging."""
     
     # Setup
     set_seed(seed)
@@ -205,6 +258,48 @@ def train(
     run_dir.mkdir(parents=True, exist_ok=True)
     print(f"Output: {run_dir}")
     
+    # Build config dict for logging
+    config = {
+        "model": model_name,
+        "leads": leads_list if leads_list != "all" else "all",
+        "n_leads": n_leads,
+        "epochs": epochs,
+        "batch_size": batch_size,
+        "learning_rate": learning_rate,
+        "weight_decay": weight_decay,
+        "patience": patience,
+        "seed": seed,
+        "optimizer": "AdamW",
+        "scheduler": "CosineAnnealingLR",
+        "base_filters": 32,  # Reduced from 64
+        "kernel_size": 15,
+        "num_blocks": 3,     # Reduced from 4
+        "dropout": 0.3,
+        "drop_path": 0.1,    # Stochastic depth
+        "mixup_alpha": 0.4,  # Mixup augmentation
+        "label_smoothing": 0.1,
+    }
+    
+    # Initialize W&B
+    wandb_run = None
+    if use_wandb and WANDB_AVAILABLE:
+        tags = wandb_tags or [f"{n_leads}-lead", model_name]
+        wandb_run = wandb.init(
+            project=wandb_project,
+            entity=wandb_entity,
+            name=run_name,
+            config=config,
+            dir=output_dir,
+            tags=tags,
+        )
+        print(f"W&B run: {wandb_run.url}")
+    elif use_wandb and not WANDB_AVAILABLE:
+        print("W&B requested but not installed. Logging disabled.")
+        use_wandb = False
+    else:
+        print("W&B logging disabled.")
+        use_wandb = False
+    
     # Data
     print("\nLoading data...")
     train_loader, val_loader, test_loader = get_dataloaders(
@@ -215,24 +310,39 @@ def train(
         pin_memory=True
     )
     
-    # Model
+    # Log dataset info to W&B
+    if use_wandb and wandb_run:
+        wandb.config.update({
+            "train_samples": len(train_loader.dataset),
+            "val_samples": len(val_loader.dataset),
+            "test_samples": len(test_loader.dataset),
+        })
+    
+    # Model - smaller architecture to prevent overfitting
     print("\nBuilding model...")
     model = get_model(
         model_name=model_name,
         n_leads=n_leads,
         n_classes=5,
-        base_filters=64,
+        base_filters=32,   # Reduced from 64
         kernel_size=15,
-        num_blocks=4,
-        dropout=0.2
+        num_blocks=3,      # Reduced from 4
+        dropout=0.3,
+        drop_path=0.1      # Stochastic depth
     )
     model = model.to(device)
     
+    # Log model info and watch gradients
+    n_params = count_parameters(model)
+    if use_wandb and wandb_run:
+        wandb.config.update({"n_parameters": n_params})
+        wandb.watch(model, log="gradients", log_freq=100)
+    
     # Loss, optimizer, scheduler
-    criterion = nn.BCEWithLogitsLoss()
-    optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    criterion = LabelSmoothingBCELoss(smoothing=0.1)
+    optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)  # Strong weight decay
     scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
-    scaler = GradScaler()
+    scaler = GradScaler('cuda')
     
     # Training loop
     print("\nStarting training...")
@@ -251,10 +361,13 @@ def train(
     for epoch in range(epochs):
         epoch_start = time.time()
         
-        # Train
-        train_metrics = train_epoch(model, train_loader, criterion, optimizer, scaler, device)
+        # Train with Mixup augmentation
+        train_metrics = train_epoch(
+            model, train_loader, criterion, optimizer, scaler, device,
+            use_mixup=True, mixup_alpha=0.4
+        )
         
-        # Validate
+        # Validate (no mixup)
         val_metrics = evaluate(model, val_loader, criterion, device)
         
         # Update scheduler
@@ -269,6 +382,24 @@ def train(
               f"Val AUROC: {val_metrics['auroc']:.4f} | "
               f"LR: {current_lr:.2e} | "
               f"Time: {epoch_time:.1f}s")
+        
+        # W&B per-epoch logging
+        if use_wandb and wandb_run:
+            log_dict = {
+                "epoch": epoch + 1,
+                "train/loss": train_metrics['loss'],
+                "train/auroc": train_metrics['auroc'],
+                "val/loss": val_metrics['loss'],
+                "val/auroc": val_metrics['auroc'],
+                "val/f1": val_metrics['f1'],
+                "learning_rate": current_lr,
+                "epoch_time": epoch_time,
+            }
+            # Per-class AUROC
+            for i, cls in enumerate(CLASSES):
+                log_dict[f"train/auroc_{cls}"] = train_metrics['auroc_per_class'][i]
+                log_dict[f"val/auroc_{cls}"] = val_metrics['auroc_per_class'][i]
+            wandb.log(log_dict)
         
         # Save history
         history['train_loss'].append(train_metrics['loss'])
@@ -292,11 +423,21 @@ def train(
             }, run_dir / "best_model.pt")
             
             print(f"   -> New best model saved (AUROC: {best_val_auroc:.4f})")
+            
+            # Update W&B summary with best metrics
+            if use_wandb and wandb_run:
+                wandb.run.summary["best_val_auroc"] = best_val_auroc
+                wandb.run.summary["best_epoch"] = epoch + 1
         else:
             patience_counter += 1
             if patience_counter >= patience:
                 print(f"\nEarly stopping at epoch {epoch+1}")
                 break
+    
+    # Log final training info to W&B
+    if use_wandb and wandb_run:
+        wandb.run.summary["epochs_trained"] = epoch + 1
+        wandb.run.summary["early_stopped"] = patience_counter >= patience
     
     # Final evaluation on test set
     print(f"\n{'='*60}")
@@ -304,18 +445,40 @@ def train(
     print(f"{'='*60}")
     
     # Load best model
-    checkpoint = torch.load(run_dir / "best_model.pt")
+    checkpoint = torch.load(run_dir / "best_model.pt", weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     
     test_metrics = evaluate(model, test_loader, criterion, device)
     
-    classes = ['NORM', 'MI', 'STTC', 'CD', 'HYP']
     print(f"\nTest Results:")
     print(f"  Macro AUROC: {test_metrics['auroc']:.4f}")
     print(f"  Macro F1: {test_metrics['f1']:.4f}")
     print(f"\n  Per-class AUROC:")
-    for i, cls in enumerate(classes):
+    for i, cls in enumerate(CLASSES):
         print(f"    {cls}: {test_metrics['auroc_per_class'][i]:.4f}")
+    
+    # Log test metrics to W&B
+    if use_wandb and wandb_run:
+        wandb.run.summary["test/auroc"] = test_metrics['auroc']
+        wandb.run.summary["test/f1"] = test_metrics['f1']
+        for i, cls in enumerate(CLASSES):
+            wandb.run.summary[f"test/auroc_{cls}"] = test_metrics['auroc_per_class'][i]
+        
+        # Save model as W&B artifact
+        artifact = wandb.Artifact(
+            name=f"model-{leads_name}",
+            type="model",
+            description=f"Best model for {leads_name} leads (AUROC: {best_val_auroc:.4f})",
+            metadata={
+                "val_auroc": best_val_auroc,
+                "test_auroc": test_metrics['auroc'],
+                "n_leads": n_leads,
+                "epochs_trained": epoch + 1
+            }
+        )
+        artifact.add_file(str(run_dir / "best_model.pt"))
+        wandb.log_artifact(artifact)
+        print(f"   -> Model artifact saved to W&B")
     
     # Save results
     results = {
@@ -325,7 +488,7 @@ def train(
         'epochs_trained': epoch + 1,
         'best_val_auroc': best_val_auroc,
         'test_auroc': test_metrics['auroc'],
-        'test_auroc_per_class': {cls: auc for cls, auc in zip(classes, test_metrics['auroc_per_class'])},
+        'test_auroc_per_class': {cls: auc for cls, auc in zip(CLASSES, test_metrics['auroc_per_class'])},
         'test_f1': test_metrics['f1'],
         'history': history,
         'config': {
@@ -347,6 +510,12 @@ def train(
     )
     
     print(f"\nResults saved to {run_dir}")
+    
+    # Finish W&B run
+    if use_wandb and wandb_run:
+        wandb.finish()
+        print("W&B run finished.")
+    
     print(f"{'='*60}\n")
     
     return results
@@ -355,10 +524,15 @@ def train(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Lead-Minimal ECG Model")
     
+    # Data and model
     parser.add_argument("--leads", type=str, default="all",
                         help="Leads to use: 'all' or comma-separated list (e.g., 'I,II,V2')")
     parser.add_argument("--model", type=str, default="resnet1d", choices=["resnet1d", "lightweight"],
                         help="Model architecture")
+    parser.add_argument("--data_path", type=str, default="data/processed/ptbxl_processed.h5",
+                        help="Path to preprocessed data")
+    
+    # Training
     parser.add_argument("--epochs", type=int, default=30,
                         help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=128,
@@ -369,12 +543,20 @@ if __name__ == "__main__":
                         help="Weight decay")
     parser.add_argument("--patience", type=int, default=7,
                         help="Early stopping patience")
-    parser.add_argument("--output_dir", type=str, default="outputs/",
-                        help="Output directory")
-    parser.add_argument("--data_path", type=str, default="data/processed/ptbxl_processed.h5",
-                        help="Path to preprocessed data")
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed")
+    
+    # Output
+    parser.add_argument("--output_dir", type=str, default="outputs/",
+                        help="Output directory")
+    
+    # W&B logging
+    parser.add_argument("--no_wandb", action="store_true",
+                        help="Disable W&B logging")
+    parser.add_argument("--wandb_project", type=str, default="lead-minimal-ecg",
+                        help="W&B project name")
+    parser.add_argument("--wandb_entity", type=str, default=None,
+                        help="W&B entity (username or team)")
     
     args = parser.parse_args()
     
@@ -388,5 +570,8 @@ if __name__ == "__main__":
         patience=args.patience,
         output_dir=args.output_dir,
         data_path=args.data_path,
-        seed=args.seed
+        seed=args.seed,
+        use_wandb=not args.no_wandb,
+        wandb_project=args.wandb_project,
+        wandb_entity=args.wandb_entity
     )
