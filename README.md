@@ -1,8 +1,12 @@
 # Lead-Minimal ECG: How Few Leads Do You Really Need?
 
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
+[![W&B](https://img.shields.io/badge/Weights%20%26%20Biases-FFCC33?logo=weightsandbiases&logoColor=black)](https://wandb.ai/)
+
 > **"A 3-lead ECG configuration (I, II, V2) retains 99.1% of 12-lead diagnostic performance."**
 
-This repository contains the code, experiments, and results for our systematic study on ECG lead reduction for automated cardiac diagnosis.
+This repository contains the code, experiments, and results for our systematic study on ECG lead reduction for automated cardiac diagnosis. We demonstrate that carefully selected lead subsets can achieve near-baseline performance, with significant implications for wearable ECG devices.
 
 ---
 
@@ -10,88 +14,90 @@ This repository contains the code, experiments, and results for our systematic s
 
 | Configuration | Leads | AUROC | Performance Retention |
 |--------------|-------|-------|----------------------|
-| **12-lead** (baseline) | All 12 | **0.913** | 100.0% |
+| **12-lead** (baseline) | I, II, III, aVR, aVL, aVF, V1-V6 | **0.913** | 100.0% |
 | **3-lead (I, II, V2)** 🏆 | I, II, V2 | **0.905** | **99.1%** |
 | 3-lead (II, V2, V5) | II, V2, V5 | 0.897 | 98.3% |
-| 6-lead (limb) | Limb leads | 0.889 | 97.4% |
+| 6-lead (limb) | I, II, III, aVR, aVL, aVF | 0.889 | 97.4% |
 | 2-lead (I, II) | I, II | 0.887 | 97.2% |
 | **1-lead (II)** | II | 0.856 | **93.7%** |
 
-### Key Insights
+### 🔬 Key Insights
 
-1. **3-lead outperforms 6-lead**: The optimal 3-lead (I, II, V2) achieves higher AUROC than all 6 limb leads.
-2. **V2 is critical**: Adding V2 dramatically improves MI detection (0.922 vs 0.876).
-3. **Lead II alone is robust**: Single lead achieves 93.7% of full 12-lead performance.
+1. **3-lead outperforms 6-lead**: The optimal 3-lead configuration (I, II, V2) achieves higher AUROC (0.905) than using all 6 limb leads (0.889).
+
+2. **V2 is critical**: Adding precordial lead V2 to limb leads dramatically improves MI detection (0.922 vs 0.876 with limb leads only).
+
+3. **Lead II alone is remarkably robust**: A single lead achieves 93.7% of full 12-lead performance, making it ideal for continuous monitoring.
+
+4. **Hypertrophy (HYP) is hardest to detect with fewer leads**: This class shows the largest performance drop (0.830 → 0.784) when reducing leads.
 
 ---
 
-## 📊 Full Results
+## 📊 Results Overview
 
-### Main Results
+### Main Results Table
 
-| Config | N | AUROC | F1 | Brier | LRS |
-|--------|---|-------|-----|-------|-----|
+| Configuration | N | AUROC | F1 | Brier | LRS |
+|--------------|---|-------|-----|-------|-----|
 | 12-lead | 12 | **0.913** | **0.688** | **0.084** | **1.000** |
-| 6-lead-limb | 6 | 0.889 | 0.641 | 0.095 | 0.968 |
-| 3-lead-I-II-V2 | 3 | 0.905 | 0.667 | 0.088 | 0.988 |
-| 3-lead-I-II-III | 3 | 0.888 | 0.634 | 0.096 | 0.966 |
-| 3-lead-II-V2-V5 | 3 | 0.897 | 0.659 | 0.091 | 0.980 |
-| 2-lead-I-II | 2 | 0.887 | 0.630 | 0.097 | 0.965 |
-| 2-lead-II-V2 | 2 | 0.884 | 0.619 | 0.097 | 0.961 |
-| 1-lead-II | 1 | 0.856 | 0.566 | 0.109 | 0.926 |
-| 1-lead-V5 | 1 | 0.851 | 0.568 | 0.109 | 0.921 |
-| 1-lead-I | 1 | 0.842 | 0.537 | 0.116 | 0.907 |
-| 1-lead-V2 | 1 | 0.793 | 0.444 | 0.128 | 0.854 |
+| 6-lead (limb) | 6 | 0.889 | 0.641 | 0.095 | 0.968 |
+| 3-lead (I-II-V2) | 3 | 0.905 | 0.667 | 0.088 | 0.988 |
+| 3-lead (I-II-III) | 3 | 0.888 | 0.634 | 0.096 | 0.966 |
+| 3-lead (II-V2-V5) | 3 | 0.897 | 0.659 | 0.091 | 0.980 |
+| 2-lead (I-II) | 2 | 0.887 | 0.630 | 0.097 | 0.965 |
+| 2-lead (II-V2) | 2 | 0.884 | 0.619 | 0.097 | 0.961 |
+| 1-lead (II) | 1 | 0.856 | 0.566 | 0.109 | 0.926 |
+| 1-lead (V5) | 1 | 0.851 | 0.568 | 0.109 | 0.921 |
+| 1-lead (I) | 1 | 0.842 | 0.537 | 0.116 | 0.907 |
+| 1-lead (V2) | 1 | 0.793 | 0.444 | 0.128 | 0.854 |
 
-### Per-Class AUROC
+*AUROC: Area Under ROC Curve (macro-averaged). LRS: Lead-Robustness Score. Brier: Brier Score (lower is better).*
 
-| Config | NORM | MI | STTC | CD | HYP |
-|--------|------|-----|------|-----|-----|
+### Per-Class Performance (AUROC)
+
+| Configuration | NORM | MI | STTC | CD | HYP |
+|--------------|------|-----|------|-----|-----|
 | 12-lead | 0.953 | 0.929 | 0.936 | 0.917 | 0.830 |
-| 3-lead-I-II-V2 | 0.947 | 0.922 | 0.924 | 0.910 | 0.821 |
-| 6-lead-limb | 0.940 | 0.886 | 0.917 | 0.885 | 0.818 |
-| 1-lead-II | 0.917 | 0.842 | 0.876 | 0.860 | 0.784 |
+| 3-lead (I-II-V2) | 0.947 | 0.922 | 0.924 | 0.910 | 0.821 |
+| 6-lead (limb) | 0.940 | 0.886 | 0.917 | 0.885 | 0.818 |
+| 1-lead (II) | 0.917 | 0.842 | 0.876 | 0.860 | 0.784 |
 
 ---
 
 ## 🏗️ Method
 
-### Model: 1D ResNet
-- **Stem**: Conv1d → BN → ReLU → MaxPool
-- **Blocks**: 4 residual blocks with spatial dropout (0.3) and stochastic depth (0.1)
-- **Head**: AdaptiveAvgPool → Dropout → Linear
-- **Parameters**: ~100K
+### Model Architecture
 
-### Training
-- **Optimizer**: AdamW (lr=0.001, wd=0.01)
-- **Epochs**: 30 with early stopping
-- **Regularization**: Label smoothing (0.1), Mixup (α=0.2)
-- **Hardware**: RTX 4090, mixed precision
+We use a **1D ResNet** optimized for ECG signals:
+- **Stem**: Conv1d(n_leads, 32, k=15, s=2) → BN → ReLU → MaxPool
+- **Residual Blocks**: 4 blocks with spatial dropout and stochastic depth
+- **Head**: AdaptiveAvgPool → Dropout(0.3) → Linear(n_classes)
+- **Parameters**: ~100K (varies by input leads)
+
+### Training Configuration
+
+| Hyperparameter | Value |
+|---------------|-------|
+| Optimizer | AdamW |
+| Learning Rate | 0.001 |
+| Weight Decay | 0.01 |
+| Batch Size | 128 |
+| Epochs | 30 (early stopping, patience=7) |
+| Scheduler | CosineAnnealingLR |
+| Label Smoothing | 0.1 |
+| Mixup Alpha | 0.2 |
+| Dropout | 0.3 |
+| Stochastic Depth | 0.1 |
 
 ### Lead-Robustness Score (LRS)
+
+We propose the **Lead-Robustness Score** to quantify how well a reduced-lead model maintains both discrimination and calibration:
+
 ```
-LRS = 0.7 × (AUROC_subset / AUROC_baseline) + 0.3 × (1 - ΔBrier / 0.25)
+LRS = α × (AUROC_subset / AUROC_baseline) + β × (1 - ΔBrier / 0.25)
 ```
 
----
-
-## 🚀 Quick Start
-
-```bash
-# Setup
-conda create -n ecg python=3.11 -y && conda activate ecg
-pip install -r requirements.txt
-
-# Download and preprocess PTB-XL
-python scripts/download_data.py
-python src/preprocess.py
-
-# Run all experiments
-python run_all_experiments.py --epochs 30
-
-# Generate paper tables
-python generate_paper_results.py
-```
+Where α = 0.7, β = 0.3, and ΔBrier is the calibration degradation.
 
 ---
 
@@ -99,31 +105,99 @@ python generate_paper_results.py
 
 ```
 lead-minimal-ecg/
+├── README.md                          # This file
+├── requirements.txt                   # Dependencies
+├── run_all_experiments.py             # Full experiment suite
+├── generate_paper_results.py          # Generate publication tables
+│
 ├── src/
-│   ├── train.py          # Training with W&B logging
-│   ├── model.py          # 1D ResNet architecture
-│   └── dataset.py        # PTB-XL data loader
-├── run_all_experiments.py # Full experiment suite
-├── generate_paper_results.py
+│   ├── train.py                       # Training script with W&B logging
+│   ├── model.py                       # 1D ResNet architecture
+│   ├── dataset.py                     # PTB-XL dataset loader
+│   └── preprocess.py                  # Data preprocessing
+│
+├── scripts/
+│   └── download_data.py               # Download PTB-XL
+│
 ├── outputs/
-│   ├── models/           # Checkpoints
-│   └── experiments/      # Results & tables
+│   ├── models/                        # Trained model checkpoints
+│   ├── experiments/                   # Experiment sweep results
+│   │   └── full_sweep_*/
+│   │       ├── results_final.json     # All results
+│   │       └── paper_tables/          # Publication-ready tables
+│   │           ├── table_main.tex     # Main LaTeX table
+│   │           ├── table_perclass.tex # Per-class LaTeX table
+│   │           ├── RESULTS.md         # Markdown summary
+│   │           └── summary.json       # Structured results
+│   └── wandb/                         # W&B logs
+│
 └── paper/
-    └── main.tex          # LaTeX paper
+    └── main.tex                       # Paper draft
 ```
 
 ---
 
-## 📖 Citation
+## 🚀 Quick Start
 
-```bibtex
-@article{leadminimal2024,
-  title={Lead-Minimal ECG: Systematic Evaluation of Reduced-Lead Configurations},
-  author={Your Name},
-  year={2024}
-}
+### 1. Environment Setup
+
+```bash
+# Create conda environment
+conda create -n ecg python=3.11 -y
+conda activate ecg
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Login to W&B (optional, for experiment tracking)
+wandb login
 ```
 
-## License
+### 2. Data Preparation
 
-MIT License
+```bash
+# Download PTB-XL dataset
+python scripts/download_data.py
+
+# Preprocess (generates HDF5 file)
+python src/preprocess.py
+```
+
+### 3. Run Experiments
+
+```bash
+# Run full experiment suite (all 11 lead configurations)
+python run_all_experiments.py --epochs 30
+
+# Run single configuration
+python run_all_experiments.py --config 3-lead-I-II-V2 --epochs 30
+
+# Quick test (5 epochs)
+python run_all_experiments.py --quick
+```
+
+### 4. Generate Results
+
+```bash
+# Generate publication tables
+python generate_paper_results.py
+
+# Results will be in outputs/experiments/full_sweep_*/paper_tables/
+```
+
+---
+
+## 📈 Experiment Tracking
+
+All experiments are logged to **Weights & Biases** with:
+- Training/validation curves
+- Per-class AUROC metrics
+- Brier scores for calibration
+- Model artifacts
+
+---
+
+## 🔗 Related Work
+
+- [PTB-XL Dataset](https://physionet.org/content/ptb-xl/1.0.3/) - The ECG dataset used
+- [PhysioNet Challenge 2021](https://physionetchallenges.org/2021/) - Multi-lead ECG classification challenge
