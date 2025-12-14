@@ -1,4 +1,4 @@
-# [RESULTS] Lead-Minimal ECG Results Summary
+#  Lead-Minimal ECG Results Summary
 
 **Generated:** 2025-12-13 23:02:27
 
@@ -18,7 +18,7 @@
 | 1-lead-I | 1 | 0.8424 | 92.3% | 0.907 |
 | 1-lead-V5 | 1 | 0.8507 | 93.2% | 0.921 |
 
-## 🔑 Key Findings
+##  Key Findings
 
 - **Best 3-lead configuration:** 3-lead-I-II-V2 achieves **99.1%** of 12-lead performance (AUROC: 0.9050)
 - **Best single-lead:** 1-lead-II achieves **93.7%** of 12-lead performance (AUROC: 0.8558)

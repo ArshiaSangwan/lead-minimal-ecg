@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
 Training script for Lead-Minimal ECG experiments.
-Optimized for RTX 4090 with mixed precision training.
-Includes W&B logging for experiment tracking.
-OVERFIT MODE: Achieve absolute minimum loss (≤ 0.01)
+Supports mixed precision training and W&B logging.
 """
 
 import os
@@ -238,56 +236,47 @@ def train_overfit_mode(
     target_loss: float = 0.01,
 ):
     """
-    🔥 OVERFIT MODE 🔥
+    Overfit mode training.
     
-    Goal: Achieve absolute minimum training loss (≤ 0.01)
+    Goal: Achieve minimal training loss by removing regularization.
     
     Strategy:
-    - NO regularization (no dropout, no weight decay, no label smoothing, no mixup)
-    - MASSIVE model capacity (128 filters, 6 blocks)
-    - NO data augmentation
-    - Train until loss converges to near-zero
-    - Use OneCycleLR for aggressive learning
+        - No regularization (dropout=0, weight_decay=0, no label smoothing)
+        - Large model capacity
+        - No data augmentation
+        - Train until loss converges
     """
     
     set_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    print("\n" + "🔥" * 30)
-    print("       OVERFIT MODE ACTIVATED       ")
-    print("🔥" * 30)
-    print(f"\nTarget Loss: ≤ {target_loss}")
+    print("\n" + "="*60)
+    print("OVERFIT MODE ACTIVATED")
+    print("="*60)
+    print(f"\nTarget Loss: <= {target_loss}")
     print(f"Device: {device}")
     if torch.cuda.is_available():
         print(f"GPU: {torch.cuda.get_device_name()}")
         print(f"VRAM: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
     
-    # Parse leads
     leads_list = parse_leads(leads)
     n_leads = 12 if leads_list == "all" else len(leads_list)
     
     print(f"\nConfiguration:")
-    print(f"  - Leads: {leads_list} ({n_leads} channels)")
-    print(f"  - Epochs: {epochs}")
-    print(f"  - Batch size: {batch_size}")
-    print(f"  - Learning rate: {learning_rate}")
-    print(f"  - Regularization: NONE ❌")
-    print(f"  - Data augmentation: NONE ❌")
-    print(f"  - Label smoothing: NONE ❌")
-    print(f"  - Mixup: NONE ❌")
-    print(f"  - Dropout: 0.0 ❌")
-    print(f"  - Weight decay: 0.0 ❌")
-    print(f"  - Model capacity: MAXIMUM 💪")
+    print(f"  Leads: {leads_list} ({n_leads} channels)")
+    print(f"  Epochs: {epochs}")
+    print(f"  Batch size: {batch_size}")
+    print(f"  Learning rate: {learning_rate}")
+    print(f"  Regularization: None")
+    print(f"  Data augmentation: None")
+    print(f"  Model capacity: Maximum")
     
-    # Create output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"OVERFIT_{model_name}_{timestamp}"
     run_dir = Path(output_dir) / "models" / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
     
-    # Data - NO AUGMENTATION
-    print("\n📊 Loading data (NO augmentation)...")
-    # Create custom dataloaders without augmentation
+    print("\nLoading data (no augmentation)...")
     train_ds = PTBXLDataset(data_path, leads=leads_list, folds=list(range(1, 9)), augment=False)
     val_ds = PTBXLDataset(data_path, leads=leads_list, folds=[9], augment=False)
     test_ds = PTBXLDataset(data_path, leads=leads_list, folds=[10], augment=False)
@@ -303,37 +292,32 @@ def train_overfit_mode(
     print(f"  Val samples: {len(val_ds)}")
     print(f"  Test samples: {len(test_ds)}")
     
-    # Model - MAXIMUM CAPACITY, NO REGULARIZATION
-    print("\n🏗️ Building MASSIVE model (no regularization)...")
+    print("\nBuilding large model (no regularization)...")
     model = get_model(
         model_name=model_name,
         n_leads=n_leads,
         n_classes=5,
-        base_filters=128,    # MASSIVE (was 32)
+        base_filters=128,
         kernel_size=15,
-        num_blocks=6,        # DEEP (was 4)
-        dropout=0.0,         # NO DROPOUT ❌
-        drop_path=0.0        # NO DROP PATH ❌
+        num_blocks=6,
+        dropout=0.0,
+        drop_path=0.0
     )
     model = model.to(device)
     
     n_params = count_parameters(model)
-    print(f"  Parameters: {n_params:,} 💪")
+    print(f"  Parameters: {n_params:,}")
     
-    # Loss - RAW BCE, NO SMOOTHING
-    criterion = nn.BCEWithLogitsLoss()  # Raw BCE, no smoothing!
+    criterion = nn.BCEWithLogitsLoss()
+    optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=0.0)
     
-    # Optimizer - NO WEIGHT DECAY
-    optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=0.0)  # NO weight decay!
-    
-    # Scheduler - OneCycleLR for aggressive learning
     steps_per_epoch = len(train_loader)
     scheduler = OneCycleLR(
         optimizer,
-        max_lr=learning_rate * 10,  # Peak at 10x base LR
+        max_lr=learning_rate * 10,
         epochs=epochs,
         steps_per_epoch=steps_per_epoch,
-        pct_start=0.1,  # 10% warmup
+        pct_start=0.1,
         anneal_strategy='cos',
         div_factor=10,
         final_div_factor=100
@@ -341,9 +325,8 @@ def train_overfit_mode(
     
     scaler = GradScaler('cuda')
     
-    # Training loop
     print("\n" + "=" * 60)
-    print("🚀 STARTING OVERFIT TRAINING 🚀")
+    print("STARTING OVERFIT TRAINING")
     print("=" * 60)
     
     best_train_loss = float('inf')
@@ -352,19 +335,16 @@ def train_overfit_mode(
     for epoch in range(epochs):
         epoch_start = time.time()
         
-        # Train - NO MIXUP
         train_metrics = train_epoch(
             model, train_loader, criterion, optimizer, scaler, device,
-            use_mixup=False,  # NO MIXUP!
+            use_mixup=False,
             scheduler=scheduler
         )
         
-        # Validate
         val_metrics = evaluate(model, val_loader, criterion, device)
         
         epoch_time = time.time() - epoch_start
         
-        # Track best
         if train_metrics['loss'] < best_train_loss:
             best_train_loss = train_metrics['loss']
             torch.save({
@@ -383,10 +363,9 @@ def train_overfit_mode(
                 'val_auroc': val_metrics['auroc'],
             }, run_dir / "best_model.pt")
         
-        # Logging
         current_lr = optimizer.param_groups[0]['lr']
         
-        status = "🔥" if train_metrics['loss'] < 0.1 else ("📉" if train_metrics['loss'] < 0.2 else "⏳")
+        status = "*" if train_metrics['loss'] < 0.1 else ("-" if train_metrics['loss'] < 0.2 else " ")
         
         print(f"{status} Epoch {epoch+1:03d}/{epochs} | "
               f"Train Loss: {train_metrics['loss']:.6f} | "
@@ -396,17 +375,14 @@ def train_overfit_mode(
               f"LR: {current_lr:.2e} | "
               f"Time: {epoch_time:.1f}s")
         
-        # Check if target achieved
         if train_metrics['loss'] <= target_loss:
-            print(f"\n🎉🎉🎉 TARGET ACHIEVED! Train Loss: {train_metrics['loss']:.6f} ≤ {target_loss} 🎉🎉🎉")
+            print(f"\nTARGET ACHIEVED! Train Loss: {train_metrics['loss']:.6f} <= {target_loss}")
             break
     
-    # Final evaluation
     print(f"\n{'=' * 60}")
-    print("📊 FINAL RESULTS")
+    print("FINAL RESULTS")
     print(f"{'=' * 60}")
     
-    # Load best model by train loss
     checkpoint = torch.load(run_dir / "best_train_loss_model.pt", weights_only=False)
     model.load_state_dict(checkpoint['model_state_dict'])
     
@@ -414,8 +390,8 @@ def train_overfit_mode(
     val_final = evaluate(model, val_loader, criterion, device)
     test_final = evaluate(model, test_loader, criterion, device)
     
-    print(f"\n🏆 Best Training Loss: {checkpoint['train_loss']:.6f}")
-    print(f"\n📊 Final Metrics (using best train loss model):")
+    print(f"\nBest Training Loss: {checkpoint['train_loss']:.6f}")
+    print(f"\nFinal Metrics (using best train loss model):")
     print(f"  Train - Loss: {train_final['loss']:.6f}, AUROC: {train_final['auroc']:.4f}")
     print(f"  Val   - Loss: {val_final['loss']:.4f}, AUROC: {val_final['auroc']:.4f}")
     print(f"  Test  - Loss: {test_final['loss']:.4f}, AUROC: {test_final['auroc']:.4f}")
@@ -424,8 +400,8 @@ def train_overfit_mode(
     for i, cls in enumerate(CLASSES):
         print(f"    {cls}: {test_final['auroc_per_class'][i]:.4f}")
     
-    print(f"\n💾 Models saved to: {run_dir}")
-    print("🔥" * 30)
+    print(f"\nModels saved to: {run_dir}")
+    print("=" * 60)
     
     return {
         'best_train_loss': checkpoint['train_loss'],
@@ -440,7 +416,7 @@ def train_ultra_overfit(
     leads: str = "all",
     model_name: str = "resnet1d",
     epochs: int = 1000,
-    batch_size: int = 32,  # Small batch = easier to overfit
+    batch_size: int = 32,
     learning_rate: float = 0.001,
     data_path: str = "data/processed/ptbxl_processed.h5",
     seed: int = 42,
@@ -448,59 +424,48 @@ def train_ultra_overfit(
     target_loss: float = 0.01,
 ):
     """
-    🔥🔥🔥 ULTRA OVERFIT MODE 🔥🔥🔥
+    Ultra overfit mode for debugging and testing.
     
-    THE MOST AGGRESSIVE OVERFITTING POSSIBLE!
-    Goal: Training loss ≤ 0.01
+    Goal: Achieve minimum training loss by maximizing model capacity
+    and removing all regularization.
     
     Strategy:
-    - ZERO regularization (no dropout, no weight decay, no smoothing, no mixup, no augmentation)
-    - MASSIVE model (256 filters, 8 blocks = ~100M+ params)
-    - Small batch size (easier to overfit)
-    - AdamW with high learning rate
-    - Train for 1000 epochs or until target reached
+        - Zero regularization
+        - Very large model (256 filters, 8 blocks)
+        - Small batch size
+        - High learning rate
     """
     
     set_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    print("\n" + "🔥" * 40)
-    print("   💀 ULTRA OVERFIT MODE ACTIVATED 💀   ")
-    print("🔥" * 40)
-    print(f"\n🎯 Target Loss: ≤ {target_loss}")
-    print(f"🖥️  Device: {device}")
+    print("\n" + "="*60)
+    print("ULTRA OVERFIT MODE")
+    print("="*60)
+    print(f"\nTarget Loss: <= {target_loss}")
+    print(f"Device: {device}")
     if torch.cuda.is_available():
-        print(f"🎮 GPU: {torch.cuda.get_device_name()}")
+        print(f"GPU: {torch.cuda.get_device_name()}")
         vram = torch.cuda.get_device_properties(0).total_memory / 1e9
-        print(f"💾 VRAM: {vram:.1f} GB")
+        print(f"VRAM: {vram:.1f} GB")
     
-    # Parse leads
     leads_list = parse_leads(leads)
     n_leads = 12 if leads_list == "all" else len(leads_list)
     
-    print(f"\n{'='*60}")
-    print("⚙️  CONFIGURATION (ALL REGULARIZATION DISABLED)")
-    print(f"{'='*60}")
-    print(f"  📊 Leads: {leads_list} ({n_leads} channels)")
-    print(f"  🔄 Epochs: {epochs}")
-    print(f"  📦 Batch size: {batch_size}")
-    print(f"  📈 Learning rate: {learning_rate}")
-    print(f"  🏗️  Model: base_filters=256, num_blocks=8 (MASSIVE)")
-    print(f"  ❌ Dropout: 0.0")
-    print(f"  ❌ Drop path: 0.0")
-    print(f"  ❌ Weight decay: 0.0")
-    print(f"  ❌ Label smoothing: 0.0")
-    print(f"  ❌ Mixup: OFF")
-    print(f"  ❌ Data augmentation: OFF")
+    print(f"\nConfiguration (all regularization disabled):")
+    print(f"  Leads: {leads_list} ({n_leads} channels)")
+    print(f"  Epochs: {epochs}")
+    print(f"  Batch size: {batch_size}")
+    print(f"  Learning rate: {learning_rate}")
+    print(f"  Model: base_filters=256, num_blocks=8")
+    print(f"  Regularization: None")
     
-    # Create output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     run_name = f"ULTRA_OVERFIT_{timestamp}"
     run_dir = Path(output_dir) / "models" / run_name
     run_dir.mkdir(parents=True, exist_ok=True)
     
-    # Load data WITHOUT any augmentation
-    print(f"\n📊 Loading data (NO augmentation)...")
+    print(f"\nLoading data (no augmentation)...")
     train_ds = PTBXLDataset(data_path, leads=leads_list, folds=list(range(1, 9)), augment=False)
     val_ds = PTBXLDataset(data_path, leads=leads_list, folds=[9], augment=False)
     
@@ -517,42 +482,33 @@ def train_ultra_overfit(
     print(f"  Train: {len(train_ds)} samples, {len(train_loader)} batches")
     print(f"  Val: {len(val_ds)} samples")
     
-    # MASSIVE model - NO regularization
-    print(f"\n🏗️  Building MASSIVE model...")
+    print(f"\nBuilding large model...")
     model = get_model(
         model_name=model_name,
         n_leads=n_leads,
         n_classes=5,
-        base_filters=256,    # MASSIVE!
+        base_filters=256,
         kernel_size=15,
-        num_blocks=8,        # VERY DEEP!
-        dropout=0.0,         # NO DROPOUT
-        drop_path=0.0        # NO DROP PATH
+        num_blocks=8,
+        dropout=0.0,
+        drop_path=0.0
     )
     model = model.to(device)
     
     n_params = count_parameters(model)
-    print(f"  💪 Parameters: {n_params:,}")
+    print(f"  Parameters: {n_params:,}")
     
-    # Compile model for faster training (PyTorch 2.0+)
     if hasattr(torch, 'compile'):
-        print("  ⚡ Compiling model with torch.compile...")
+        print("  Compiling model with torch.compile...")
         model = torch.compile(model, mode='reduce-overhead')
     
-    # Raw BCE loss - NO label smoothing!
     criterion = nn.BCEWithLogitsLoss()
-    
-    # Optimizer - NO weight decay!
     optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=0.0, betas=(0.9, 0.999))
-    
-    # Simple cosine scheduler
     scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
-    
-    # Mixed precision scaler
     scaler = GradScaler('cuda')
     
     print(f"\n{'='*60}")
-    print("🚀 STARTING ULTRA OVERFIT TRAINING 🚀")
+    print("STARTING ULTRA OVERFIT TRAINING")
     print(f"{'='*60}\n")
     
     best_loss = float('inf')
@@ -587,12 +543,10 @@ def train_ultra_overfit(
         
         scheduler.step()
         
-        # Compute epoch metrics
         avg_loss = epoch_loss / n_samples
         current_lr = scheduler.get_last_lr()[0]
         elapsed = time.time() - start_time
         
-        # Save best
         if avg_loss < best_loss:
             best_loss = avg_loss
             torch.save({
@@ -601,33 +555,23 @@ def train_ultra_overfit(
                 'loss': avg_loss,
             }, run_dir / "best_model.pt")
         
-        # Status emoji
         if avg_loss <= 0.01:
-            status = "🎉"
-        elif avg_loss <= 0.05:
-            status = "🔥"
+            status = "*"
         elif avg_loss <= 0.1:
-            status = "🚀"
-        elif avg_loss <= 0.2:
-            status = "📉"
+            status = "-"
         else:
-            status = "⏳"
+            status = " "
         
-        # Print progress
         print(f"{status} Epoch {epoch+1:04d}/{epochs} | "
               f"Loss: {avg_loss:.6f} | "
               f"Best: {best_loss:.6f} | "
               f"LR: {current_lr:.2e} | "
               f"Time: {elapsed/60:.1f}min")
         
-        # Check target
         if avg_loss <= target_loss:
-            print(f"\n{'🎉'*20}")
-            print(f"   TARGET ACHIEVED! Loss: {avg_loss:.6f} ≤ {target_loss}")
-            print(f"{'🎉'*20}\n")
+            print(f"\nTARGET ACHIEVED! Loss: {avg_loss:.6f} <= {target_loss}\n")
             break
         
-        # Validation every 50 epochs
         if (epoch + 1) % 50 == 0:
             model.eval()
             val_loss = 0.0
@@ -654,7 +598,6 @@ def train_ultra_overfit(
             all_preds = np.concatenate(all_preds)
             all_labels = np.concatenate(all_labels)
             
-            # AUROC
             try:
                 aurocs = []
                 for i in range(5):
@@ -666,24 +609,22 @@ def train_ultra_overfit(
             except:
                 val_auroc = 0.0
             
-            print(f"   📊 Validation - Loss: {val_loss:.4f}, AUROC: {val_auroc:.4f}")
+            print(f"   Validation - Loss: {val_loss:.4f}, AUROC: {val_auroc:.4f}")
     
-    # Final summary
     total_time = time.time() - start_time
     print(f"\n{'='*60}")
-    print("📊 TRAINING COMPLETE")
+    print("TRAINING COMPLETE")
     print(f"{'='*60}")
-    print(f"  🏆 Best Training Loss: {best_loss:.6f}")
-    print(f"  ⏱️  Total Time: {total_time/60:.1f} minutes")
-    print(f"  💾 Model saved to: {run_dir}")
+    print(f"  Best Training Loss: {best_loss:.6f}")
+    print(f"  Total Time: {total_time/60:.1f} minutes")
+    print(f"  Model saved to: {run_dir}")
     
     if best_loss <= target_loss:
-        print(f"\n  ✅ TARGET ACHIEVED: {best_loss:.6f} ≤ {target_loss}")
+        print(f"\n  TARGET ACHIEVED: {best_loss:.6f} <= {target_loss}")
     else:
-        print(f"\n  ⚠️  Target not reached. Best: {best_loss:.6f}, Target: {target_loss}")
-        print(f"  💡 Try: more epochs, smaller batch size, or higher learning rate")
+        print(f"\n  Target not reached. Best: {best_loss:.6f}, Target: {target_loss}")
     
-    print("🔥" * 40)
+    print("=" * 60)
     
     return {'best_loss': best_loss, 'run_dir': str(run_dir)}
 
@@ -1016,15 +957,13 @@ def train(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Lead-Minimal ECG Model")
     
-    # Mode
     parser.add_argument("--overfit", action="store_true",
-                        help="🔥 OVERFIT MODE: Remove all regularization to achieve minimal loss")
+                        help="Overfit mode: Remove regularization to achieve minimal loss")
     parser.add_argument("--ultra", action="store_true",
-                        help="💀 ULTRA OVERFIT MODE: Maximum aggression for minimum loss")
+                        help="Ultra overfit mode: Maximum aggression for minimum loss")
     parser.add_argument("--target_loss", type=float, default=0.01,
                         help="Target training loss for overfit mode")
     
-    # Data and model
     parser.add_argument("--leads", type=str, default="all",
                         help="Leads to use: 'all' or comma-separated list (e.g., 'I,II,V2')")
     parser.add_argument("--model", type=str, default="resnet1d", choices=["resnet1d", "lightweight"],
@@ -1032,7 +971,6 @@ if __name__ == "__main__":
     parser.add_argument("--data_path", type=str, default="data/processed/ptbxl_processed.h5",
                         help="Path to preprocessed data")
     
-    # Training
     parser.add_argument("--epochs", type=int, default=30,
                         help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=128,
@@ -1046,11 +984,9 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=42,
                         help="Random seed")
     
-    # Output
     parser.add_argument("--output_dir", type=str, default="outputs/",
                         help="Output directory")
     
-    # W&B logging
     parser.add_argument("--no_wandb", action="store_true",
                         help="Disable W&B logging")
     parser.add_argument("--wandb_project", type=str, default="lead-minimal-ecg",
@@ -1061,26 +997,24 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.ultra:
-        # 💀 ULTRA OVERFIT MODE 💀
         train_ultra_overfit(
             leads=args.leads,
             model_name=args.model,
-            epochs=args.epochs if args.epochs != 30 else 1000,  # Default 1000 for ultra
-            batch_size=args.batch_size if args.batch_size != 128 else 32,  # Small batch
-            learning_rate=args.lr if args.lr != 0.001 else 0.001,  # Standard LR
+            epochs=args.epochs if args.epochs != 30 else 1000,
+            batch_size=args.batch_size if args.batch_size != 128 else 32,
+            learning_rate=args.lr if args.lr != 0.001 else 0.001,
             data_path=args.data_path,
             seed=args.seed,
             output_dir=args.output_dir,
             target_loss=args.target_loss,
         )
     elif args.overfit:
-        # 🔥 OVERFIT MODE 🔥
         train_overfit_mode(
             leads=args.leads,
             model_name=args.model,
-            epochs=args.epochs if args.epochs != 30 else 200,  # Default 200 for overfit
-            batch_size=args.batch_size if args.batch_size != 128 else 256,  # Larger batch
-            learning_rate=args.lr if args.lr != 0.001 else 0.0005,  # Lower LR
+            epochs=args.epochs if args.epochs != 30 else 200,
+            batch_size=args.batch_size if args.batch_size != 128 else 256,
+            learning_rate=args.lr if args.lr != 0.001 else 0.0005,
             data_path=args.data_path,
             seed=args.seed,
             output_dir=args.output_dir,

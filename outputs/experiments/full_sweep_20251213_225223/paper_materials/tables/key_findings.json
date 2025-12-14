@@ -1,0 +1,30 @@
+{
+  "baseline": {
+    "auroc": 0.9130000845769649,
+    "f1": 0.6877175065504266
+  },
+  "best_3lead": {
+    "config": "3-lead-I-II-V2",
+    "auroc": 0.904988586789524,
+    "retention": 99.1225085383039
+  },
+  "best_single": {
+    "config": "1-lead-II",
+    "auroc": 0.8558017774085537,
+    "retention": 93.7351257535848
+  },
+  "six_lead": {
+    "auroc": 0.8893167041675495
+  },
+  "3lead_vs_6lead": {
+    "3lead_auroc": 0.904988586789524,
+    "6lead_auroc": 0.8893167041675495,
+    "difference": 0.015671882621974498,
+    "3lead_wins": true
+  },
+  "hardest_class": {
+    "class": "HYP",
+    "name": "Hypertrophy",
+    "auroc": 0.8303566148205098
+  }
+}

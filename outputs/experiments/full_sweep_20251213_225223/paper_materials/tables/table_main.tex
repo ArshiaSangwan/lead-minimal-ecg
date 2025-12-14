@@ -1,0 +1,26 @@
+\begin{table}[htbp]
+\centering
+\caption{Classification Performance by Lead Configuration on PTB-XL Test Set.
+AUROC: Area Under ROC Curve (macro-averaged across 5 classes).
+Best results per column in \textbf{bold}. 
+$\dagger$: Outperforms 6-lead limb configuration.}
+\label{tab:main_results}
+\small
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Configuration} & \textbf{N} & \textbf{AUROC} & \textbf{Ret.(\%)} & \textbf{F1} & \textbf{Brier} \\
+\midrule
+12-lead (Full) & 12 & \textbf{0.913} & 100.0 & \textbf{0.688} & \textbf{0.084} \\
+6-lead (Limb) & 6 & 0.889 & 97.4 & 0.641 & 0.095 \\
+3-lead (I, II, V2)$^\dagger$ & 3 & 0.905 & 99.1 & 0.667 & 0.088 \\
+3-lead (I, II, III) & 3 & 0.888 & 97.3 & 0.634 & 0.096 \\
+3-lead (II, V2, V5)$^\dagger$ & 3 & 0.897 & 98.3 & 0.659 & 0.090 \\
+2-lead (I, II) & 2 & 0.887 & 97.2 & 0.630 & 0.097 \\
+2-lead (II, V2) & 2 & 0.884 & 96.8 & 0.619 & 0.097 \\
+1-lead (II) & 1 & 0.856 & 93.7 & 0.566 & 0.109 \\
+1-lead (V2) & 1 & 0.793 & 86.8 & 0.444 & 0.128 \\
+1-lead (I) & 1 & 0.842 & 92.3 & 0.537 & 0.116 \\
+1-lead (V5) & 1 & 0.851 & 93.2 & 0.568 & 0.109 \\
+\bottomrule
+\end{tabular}
+\end{table}

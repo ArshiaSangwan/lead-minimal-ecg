@@ -242,8 +242,26 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-paper/
+# Project-specific ignores
 data/
 experiment_log.txt
-EXPERIMENT_RESULTS.md
-generate_paper_results.py
+
+# Keep paper/ for LaTeX sources
+# Paper build artifacts
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.synctex.gz
+paper/*.bbl
+paper/*.blg
+
+# Large output files (models, figures are regenerated)
+outputs/models/
+outputs/wandb/
+*.h5
+*.pt
+*.pth
+
+paper_base.py
+paper_base_materials.py
+src/paper_figures.py
