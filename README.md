@@ -115,9 +115,8 @@ lead-minimal-ecg/
 │
 ├── run_all_experiments.py           # Run all lead configurations
 ├── run_multiseed_experiments.py     # Multi-seed experiments
-├── run_publication_pipeline.py      # Full publication pipeline
+├── run_complete_pipeline.py         # Full pipeline
 ├── run_traditional_baselines.py     # XGBoost, Random Forest baselines
-├── generate_all_paper_materials.py  # Generate tables and figures
 ├── benchmark_efficiency.py          # Model efficiency analysis
 ├── external_validation.py           # External dataset validation
 │
@@ -128,12 +127,8 @@ lead-minimal-ecg/
 │   ├── preprocess.py                # Data preprocessing
 │   ├── metrics.py                   # Basic metrics
 │   ├── comprehensive_evaluation.py  # All publication metrics
-│   ├── publication_figures.py       # Figure generation
 │   ├── lrs_metric.py                # Lead-Robustness Score
 │   └── evaluate.py                  # Evaluation utilities
-│
-├── paper/
-│   └── main.tex                     # Publication-ready paper
 │
 ├── outputs/
 │   ├── experiments/                 # Experiment results
@@ -171,22 +166,19 @@ python run_all_experiments.py --config 3-lead-I-II-V2 --epochs 30
 python run_all_experiments.py
 ```
 
-### Publication Pipeline
+### Complete Pipeline
 
-For reproducible, publication-ready results:
+For reproducible results:
 
 ```bash
 # Full pipeline: 5 seeds, all configurations, statistical analysis
-python run_publication_pipeline.py --mode full --seeds 5
+python run_complete_pipeline.py --mode full --seeds 5
 
 # Quick validation: 2 seeds, priority configs only
-python run_publication_pipeline.py --mode quick --seeds 2 --epochs 5
+python run_complete_pipeline.py --mode quick --seeds 2 --epochs 5
 
 # Analyze existing results (no training)
-python run_publication_pipeline.py --mode analyze
-
-# Generate all paper materials (figures, tables)
-python generate_all_paper_materials.py
+python run_complete_pipeline.py --mode analyze
 
 # Run traditional ML baselines for comparison
 python run_traditional_baselines.py --all

@@ -429,7 +429,23 @@ def run_baseline_experiment(config_name: str, leads_str: str,
 def run_all_baselines(data_path: str, output_dir: str):
     """Run all traditional ML baselines for comparison."""
     
-    from run_publication_pipeline import LEAD_CONFIGS, PRIORITY_CONFIGS
+    # Define lead configurations inline to avoid import issues
+    LEAD_CONFIGS = {
+        "12-lead": "all",
+        "6-lead-limb": "I,II,III,aVR,aVL,aVF",
+        "3-lead-I-II-V2": "I,II,V2",
+        "3-lead-I-II-III": "I,II,III",
+        "3-lead-II-V2-V5": "II,V2,V5",
+        "2-lead-I-II": "I,II",
+        "2-lead-II-V2": "II,V2",
+        "1-lead-II": "II",
+        "1-lead-V2": "V2",
+        "1-lead-I": "I",
+        "1-lead-V5": "V5",
+    }
+    
+    # Priority configs for comparison
+    PRIORITY_CONFIGS = ["12-lead", "6-lead-limb", "3-lead-I-II-V2", "1-lead-II"]
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     exp_dir = Path(output_dir) / "baselines" / f"traditional_ml_{timestamp}"
@@ -487,7 +503,13 @@ def main():
     if args.all:
         run_all_baselines(args.data_path, args.output_dir)
     else:
-        from run_publication_pipeline import LEAD_CONFIGS
+        # Define lead configurations inline
+        LEAD_CONFIGS = {
+            "12-lead": "all",
+            "6-lead-limb": "I,II,III,aVR,aVL,aVF",
+            "3-lead-I-II-V2": "I,II,V2",
+            "1-lead-II": "II",
+        }
         leads_str = LEAD_CONFIGS.get(args.config, args.config)
         run_baseline_experiment(args.config, leads_str, args.model, args.data_path)
 
