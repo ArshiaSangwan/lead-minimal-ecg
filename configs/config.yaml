@@ -1,0 +1,72 @@
+# Lead-Minimal ECG Configuration
+
+# Paths
+data:
+  raw_dir: "data/ptb-xl/"
+  processed_dir: "data/processed/"
+  
+# PTB-XL settings
+ptbxl:
+  sampling_rate: 100  # Use 100Hz version (smaller, faster)
+  sequence_length: 1000  # 10 seconds at 100Hz
+
+# Lead configurations to evaluate
+leads:
+  all: ["I", "II", "III", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"]
+  single:
+    - ["II"]
+    - ["V2"]
+    - ["I"]
+    - ["V5"]
+  double:
+    - ["I", "II"]
+    - ["II", "V2"]
+    - ["I", "V5"]
+  triple:
+    - ["I", "II", "V2"]
+    - ["I", "II", "III"]
+    - ["II", "V2", "V5"]
+  limb:
+    - ["I", "II", "III", "aVR", "aVL", "aVF"]
+
+# Model architecture
+model:
+  name: "ResNet1D"
+  base_filters: 64
+  kernel_size: 15
+  num_blocks: 4
+  dropout: 0.2
+
+# Training
+training:
+  batch_size: 128
+  epochs: 30
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: "cosine"
+  early_stopping_patience: 7
+
+# Evaluation
+evaluation:
+  metrics: ["auroc", "auprc", "f1_macro", "sensitivity", "specificity"]
+  calibration: true
+  confidence_intervals: true
+  n_bootstrap: 1000
+
+# Classes (PTB-XL superclasses)
+classes:
+  - "NORM"  # Normal
+  - "MI"    # Myocardial Infarction
+  - "STTC"  # ST/T Change
+  - "CD"    # Conduction Disturbance
+  - "HYP"   # Hypertrophy
+
+# Hardware
+hardware:
+  device: "cuda"
+  num_workers: 8
+  pin_memory: true
+  mixed_precision: true
+
+# Reproducibility
+seed: 42
