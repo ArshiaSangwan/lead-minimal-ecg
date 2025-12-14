@@ -259,6 +259,7 @@ def train(
     print(f"Output: {run_dir}")
     
     # Build config dict for logging
+    # BALANCED regularization - not too weak (overfitting) or too strong (underfitting)
     config = {
         "model": model_name,
         "leads": leads_list if leads_list != "all" else "all",
@@ -266,18 +267,18 @@ def train(
         "epochs": epochs,
         "batch_size": batch_size,
         "learning_rate": learning_rate,
-        "weight_decay": weight_decay,
+        "weight_decay": 0.01,      # Moderate (was 0.1 = too strong)
         "patience": patience,
         "seed": seed,
         "optimizer": "AdamW",
         "scheduler": "CosineAnnealingLR",
-        "base_filters": 32,  # Reduced from 64
+        "base_filters": 32,        # Moderate capacity (was 24 = too small)
         "kernel_size": 15,
-        "num_blocks": 3,     # Reduced from 4
-        "dropout": 0.3,
-        "drop_path": 0.1,    # Stochastic depth
-        "mixup_alpha": 0.4,  # Mixup augmentation
-        "label_smoothing": 0.1,
+        "num_blocks": 4,           # Moderate depth (was 3 = too shallow)
+        "dropout": 0.3,            # Moderate (was 0.4 = too high)
+        "drop_path": 0.1,          # Moderate (was 0.2 = too high)
+        "mixup_alpha": 0.2,        # Moderate (was 0.4 = too strong)
+        "label_smoothing": 0.1,    # Moderate (was 0.2 = too strong)
     }
     
     # Initialize W&B
@@ -318,17 +319,17 @@ def train(
             "test_samples": len(test_loader.dataset),
         })
     
-    # Model - smaller architecture to prevent overfitting
+    # Model - balanced architecture for good generalization
     print("\nBuilding model...")
     model = get_model(
         model_name=model_name,
         n_leads=n_leads,
         n_classes=5,
-        base_filters=32,   # Reduced from 64
+        base_filters=32,   # Moderate capacity
         kernel_size=15,
-        num_blocks=3,      # Reduced from 4
-        dropout=0.3,
-        drop_path=0.1      # Stochastic depth
+        num_blocks=4,      # Moderate depth
+        dropout=0.3,       # Moderate dropout
+        drop_path=0.1      # Moderate stochastic depth
     )
     model = model.to(device)
     
@@ -338,9 +339,9 @@ def train(
         wandb.config.update({"n_parameters": n_params})
         wandb.watch(model, log="gradients", log_freq=100)
     
-    # Loss, optimizer, scheduler
-    criterion = LabelSmoothingBCELoss(smoothing=0.1)
-    optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)  # Strong weight decay
+    # Loss, optimizer, scheduler - balanced regularization
+    criterion = LabelSmoothingBCELoss(smoothing=0.1)  # Moderate smoothing
+    optimizer = AdamW(model.parameters(), lr=learning_rate, weight_decay=0.01)  # Moderate weight decay
     scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=1e-6)
     scaler = GradScaler('cuda')
     
@@ -361,10 +362,10 @@ def train(
     for epoch in range(epochs):
         epoch_start = time.time()
         
-        # Train with Mixup augmentation
+        # Train with Mixup augmentation (moderate alpha)
         train_metrics = train_epoch(
             model, train_loader, criterion, optimizer, scaler, device,
-            use_mixup=True, mixup_alpha=0.4
+            use_mixup=True, mixup_alpha=0.2
         )
         
         # Validate (no mixup)

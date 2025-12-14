@@ -67,29 +67,32 @@ class PTBXLDataset(Dataset):
         return sig, lab
     
     def _augment(self, sig):
-        """Enhanced augmentations to reduce overfitting."""
-        # Amplitude scaling (more aggressive)
-        if np.random.rand() < 0.7:
-            sig = sig * np.random.uniform(0.7, 1.3)
-        
-        # Gaussian noise (increased probability and magnitude)
+        """Balanced augmentations - enough to regularize, not so much as to hurt learning."""
+        # Amplitude scaling (moderate)
         if np.random.rand() < 0.5:
-            sig = sig + np.random.normal(0, 0.1, sig.shape)
+            sig = sig * np.random.uniform(0.85, 1.15)
         
-        # Temporal shift
-        if np.random.rand() < 0.5:
-            sig = np.roll(sig, np.random.randint(-100, 100), axis=0)
+        # Gaussian noise (moderate probability and magnitude)
+        if np.random.rand() < 0.4:
+            noise_level = np.random.uniform(0.02, 0.08)
+            sig = sig + np.random.normal(0, noise_level, sig.shape)
         
-        # Random baseline wander
-        if np.random.rand() < 0.3:
+        # Temporal shift (moderate range)
+        if np.random.rand() < 0.4:
+            sig = np.roll(sig, np.random.randint(-50, 50), axis=0)
+        
+        # Random baseline wander (lower probability)
+        if np.random.rand() < 0.2:
             t = np.linspace(0, 1, sig.shape[0])
-            wander = 0.1 * np.sin(2 * np.pi * np.random.uniform(0.1, 0.5) * t)
+            freq = np.random.uniform(0.1, 0.5)
+            amplitude = np.random.uniform(0.02, 0.08)
+            wander = amplitude * np.sin(2 * np.pi * freq * t)
             sig = sig + wander[:, np.newaxis]
         
-        # Random dropout of time segments
-        if np.random.rand() < 0.2:
+        # Random dropout of time segments (smaller, less frequent)
+        if np.random.rand() < 0.15:
             start = np.random.randint(0, sig.shape[0] - 50)
-            length = np.random.randint(10, 50)
+            length = np.random.randint(10, 40)
             sig[start:start+length, :] = 0
         
         return sig.astype(np.float32)
