@@ -4,10 +4,7 @@ Lead-Robustness Score (LRS) - Theoretical Justification and Implementation
 ===========================================================================
 
 This module provides a rigorous definition of the Lead-Robustness Score (LRS),
-addressing the critique that the metric needs proper justification.
 
-MOTIVATION:
------------
 In clinical ECG analysis, reducing the number of leads has practical benefits:
 - Reduced electrode placement time
 - Lower cost devices
@@ -21,16 +18,16 @@ DEFINITION:
 -----------
 LRS combines three components:
 
-1. Discrimination Retention (α = 0.5):
+1. Discrimination Retention (alpha = 0.5):
    DR = AUROC_subset / AUROC_baseline
    
-2. Calibration Retention (β = 0.3):
+2. Calibration Retention (beta = 0.3):
    CR = 1 - (Brier_subset - Brier_baseline) / max_brier_degradation
    
-3. Efficiency Bonus (γ = 0.2):
+3. Efficiency Bonus (gamma = 0.2):
    EB = 1 - (n_leads_subset / n_leads_baseline)
 
-LRS = α * DR + β * CR + γ * EB
+LRS = alpha * DR + beta * CR + gamma * EB
 
 The LRS ranges from 0 to ~1.1, where:
 - LRS ≈ 1.0: Near-baseline performance
@@ -43,7 +40,7 @@ THEORETICAL JUSTIFICATION:
 2. Brier score captures calibration quality (important for clinical decision-making)
 3. Lead reduction is the goal, so efficiency should contribute to the score
 
-The weights (α, β, γ) = (0.5, 0.3, 0.2) were chosen to:
+The weights (alpha, beta, gamma) = (0.5, 0.3, 0.2) were chosen to:
 - Prioritize discrimination (50% weight)
 - Reward good calibration (30% weight) 
 - Acknowledge lead reduction value (20% weight)
@@ -265,7 +262,7 @@ def generate_lrs_latex_table(ranked_results: List[Dict]) -> str:
     
     latex = r"""\begin{table}[htbp]
 \centering
-\caption{Lead-Robustness Score (LRS) Analysis. LRS = α·DR + β·CR + γ·EB where DR=Discrimination Retention, CR=Calibration Retention, EB=Efficiency Bonus. Weights: α=0.5, β=0.3, γ=0.2.}
+\caption{Lead-Robustness Score (LRS) Analysis. LRS = alpha·DR + beta·CR + gamma·EB where DR=Discrimination Retention, CR=Calibration Retention, EB=Efficiency Bonus. Weights: alpha=0.5, beta=0.3, gamma=0.2.}
 \label{tab:lrs_analysis}
 \small
 \begin{tabular}{lcccccc}
